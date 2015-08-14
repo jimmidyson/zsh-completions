@@ -1,0 +1,224 @@
+#compdef oc
+
+_oc_output_format=(
+    {-o,--output}"[Output format]:output:(json yaml template templatefile wide)"
+)
+
+__oc_top_commands() {
+    local rets
+    rets=(login logout project new-project new-app status start-build
+          types cancel-build build-logs deploy rollback env expose get
+          describe create process edit update delete logs exec port-forward
+          proxy version config rsh volume resize stop label whoami help
+          export)
+    compadd $rets
+}
+
+__oc_types () {
+    local rets
+    rets=(persistentVolumeClaims pvc
+          persistentVolumes pv pods nodes build rc replicationcontrollers
+          deploymentConfigs buildConfigs imageStreams
+          imageStreamTags imageStreamImages route project
+          service options template)
+    compadd $rets
+}
+
+__oc_contexts () {
+    compadd $(oc config view -o template \
+                 --template='{{$dot := .}}{{range $element := (index $dot "contexts")}}{{ .name }} {{end}}')
+}
+
+__oc_get () { compadd $(oc get $1 -o template --template='{{range.items}}{{.metadata.name}} {{end}}')}
+__oc_pods () { __oc_get pods}
+__oc_pods_running () { __oc_get pods Running}
+__oc_build () { __oc_get build }
+__oc_build_configs () { __oc_get bc }
+__oc_deployment_configs () { __oc_get dc }
+__oc_project () {__oc_get project }
+__oc_rcs () { __oc_get rc }
+__oc_route () {__oc_get route }
+__oc_get_imageStream () {__oc_get is }
+
+__oc_avail_shell() {
+    rets=(/bin/zsh /bin/sh /bin/bash)
+    [[ -e /etc/shells ]] && rets=(${(Z+Cn+)"$(</etc/shells)"})
+    compadd $rets
+}
+
+_oc_hosts_default_port() {
+    # NOTE(chmou): 8443 should prob need to be a variable
+    _combination -s '[@:]' '' users-hosts hosts -S ":8443 " "$@" -
+}
+
+__oc_subcommand () {
+    case "$words[1]" in
+        (build-logs)
+            _arguments -C -s -S -A "-*" \
+                {-f,--follow}"[Specify whether logs should be followed; default is true]" \
+                {-w,--nowait}"[Specify whether to return immediately without waiting for logs to be available; default is false]" \
+                '1:ocbuild:__oc_build'
+            ;;
+        (cancel-build)
+            _arguments -C -s -S -A "-*" \
+                "--dump-logs[Specify if the build logs for the cancelled build should be shown]" \
+                "--restart[Specify if a new build should be created after the current build is cancelled]" \
+                '1:ocbuild:__oc_build'
+            ;;
+        (config)
+            _arguments \
+                '1: :(view use-context)'
+            ;;
+        (create)
+            _arguments \
+                {-f,--file=}"[template file]:filename:_files"
+            ;;
+        (exec)
+            _arguments -C -s -S -A "-*" \
+                {-p,--pod}"[Pod name]:pod:__oc_pods_running" \
+                {-i,--stdin}"[Pass stdin to the container]" \
+                {-t,--tty}"[Stdin is a TTY]" \
+                '*::arguments: _normal'
+            ;;
+        (get|export)
+            _arguments \
+                $_oc_output_format \
+                "--all[Select all resources in the namespace of the specified resource types]" \
+                ':octypes:__oc_types'
+            ;;
+        (delete|describe|edit|volume)
+            _arguments \
+                ':octypes:__oc_types'
+            ;;
+        (start-build)
+            _arguments -C -s -S -A "-*" \
+                "--follow[Start a build and watch its logs until it completes or fails]" \
+                "--from-build=[Specify the name of a build which should be re-run]:from-build:" \
+                "--from-webhook=[Specify a webhook URL for an existing BuildConfign to trigger]:from-webhook:" \
+                "--git-post-receive=[The contents of the post-receive hook to trigger a build]:" \
+                "--git-repository=[The path to the git repository for post-receive; defaults to the current directory]:git-repo:_files -/" \
+                "--list-webhooks=[List the webhooks for the specified BuildConfig or build]:webhooks:(all generic github)" \
+                '1:ocbuild:__oc_build_configs'
+            ;;
+        (rsh)
+            _arguments -C -s -S -A "-*" \
+                {-s,--shell}"[shell]:shells:__oc_avail_shell" \
+                ':ocrunning:__oc_pods_running'
+            ;;
+        (login)
+            _arguments \
+                {-u,--user}"[Username, will prompt if not provided]:users:_users" \
+                {-p,--password}"[Password, will prompt if not provided]:password:" \
+                ':host_port:_oc_hosts_default_port'
+            ;;
+        (logs)
+            _arguments '1:ocrunning:__oc_pods'
+            ;;
+        (new-app)
+            _arguments -C \
+                "--code=[Source code to use to build this application]:code_path:_path_files -/" \
+                "--context-dir=[Context directory to be used for the build]:context_dir:_path_files -/" \
+                "--docker-image=[Name of a Docker image to include in the app]:docker_image:" \
+                {-e,--env}"[Specify key value pairs of environment variables to set into each container]:envs:" \
+                {-f,--file}"[Path to a template file to use for the app]:template_file:_files" \
+                {-i,--image-stream}"[Name of an image stream to use in the app]:image_stream:__oc_get_imageStream" \
+                "--insecure-registry[Insecure registry]" \
+                "--no-headers[When using the default output, don't print headers]" \
+                "--name=[Set name to use for generated application artifacts]:name:" \
+                $_oc_output_format \
+                "--output_template=[Template string or path to template file to use]:template:_files" \
+                "--output-version=[Output the formatted object with the given version]:output_version" \
+                {-p,--param}"[Specify a list of key value pairs to override]:params:" \
+                {-l,--label}"[Label to set in all resources for this application]:labels:" \
+                {-S,--search}"[Search for components that match the arguments provided and print the results]" \
+                "--strategy=[Specify the build strategy to use if you don't want to detect]:strategy:(docker source)" \
+                "--template=[Name of a stored template to use in the app]:stored_template:" \
+                ':path:_files'
+            ;;
+        (new-project)
+            _arguments \
+                "--description=[Project description]:description:" \
+                "--display-name=[Project display name]:displayname:"
+            ;;
+        (project)
+            _arguments '1:ocrunning:__oc_project'
+            ;;
+        (status)
+            _arguments \
+                "-o=[Output format]:output:(dot)" \
+            ;;
+        (whoami)
+            _arguments \
+                {-c,--context}"[Print the current user context name]::" \
+                {-t,--token}"[Print the token the current session is using]::"
+            ;;
+        (help)
+            _arguments \
+                ':vmoc_command:__oc_top_commands'
+            ;;
+         (*)
+             _message 'Unkown sub command'
+    esac
+
+    case "$words[2]" in
+        (build|builds) __oc_build;;
+        (route|routes) __oc_route;;
+        (use-context) __oc_contexts;;
+        (project|projects) __oc_project;;
+        (pod|pods) __oc_pods ;;
+        (rc|replicationcontroller|replicationcontrollers) __oc_rcs ;;
+        (bc|buildConfigs|buildConfig) __oc_build_configs ;;
+        (dc|deploymentConfigs|deploymentConfig) __oc_deployment_configs;;
+    esac
+
+}
+
+_oc () {
+    local curcontext="$curcontext" state common_options
+    common_options=(
+        '--alsologtostderr=[log to standard error as well as files]:log also to stderr:(true false)'
+        '--api-version=[The API version to use when talking to the server]:api version:'
+        '--certificate-authority=[Path to a cert. file for the certificate authority.]:certa auth:_files'
+        '--client-certificate=[Path to a client cert file for TLS.]:client cert:_files'
+        '--client-key=[Path to a client key file for TLS.]:client key:_files'
+        '--cluster=[The name of the kubeconfig cluster to use]:cluster:'
+        '--config=[Path to the config file to use for CLI requests.]:config file:_files'
+        '--context=[The name of the kubeconfig context to use]:context:__oc_contexts'
+        '--google-json-key=[The Google Cloud Platform Service Account JSON Key to use for authentication.]:google json:'
+        '--httptest.serve=[if non-empty, httptest.NewServer serves on this address and blocks]:httptest:'
+        '--insecure-skip-tls-verify=[If use insecure HTTPS connections.]:insecure:(true false)'
+        '--log-backtrace-at=[when logging hits line file:N, emit a stack trace]:log backtrace:'
+        '--log-dir=[If non-empty, write log files in this directory]:log dir:_directories'
+        '--log-flush-frequency=[Maximum number of seconds between log flushes]:log flush:'
+        '--loglevel=[Set the level of log output (0-5)]:loglevel:(0 1 2 3 4 5)'
+        '--logtostderr=[log to standard error instead of files]:log to stderr:(true false)'
+        '--match-server-version=[Require server version to match client version]:match version:(true false)'
+        {-n,--namespace}'[If present, the namespace scope for this CLI request.]:namespace:__oc_project'
+        '--server=[The address and port of the Kubernetes API server]:server:'
+        '--stderrthreshold=[logs at or above this threshold go to stderr]:stderr:'
+        '--token=[Bearer token for authentication to the API server.]:token:'
+        '--user=[The name of the kubeconfig user to use]:user:'
+        '--v=[log level for V logs]:'
+        '--validate=[If true, use a schema to validate the input before sending it]:validate:(true false)'
+        '--vmodule=[comma-separated list of pattern=N settings for file-filtered logging]:vmodule:')
+
+    _arguments -C \
+         ${common_options} \
+        '(-): :->command' \
+        '(-)*:: :->option-or-argument'
+    case $state in
+        (command)
+            __oc_top_commands
+            ;;
+        (option-or-argument)
+            curcontext=${curcontext%:*:*}:oc-$words[1]:
+            __oc_subcommand
+            ;;
+    esac
+}
+
+_oc "$@"
+
+# Local Variables:
+# mode: sh
+# End:
